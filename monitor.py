@@ -28,8 +28,8 @@ ENTRY_POINT_NAMES = [
     "sabrina",
 ]
 
-START_DATE = "2026-09-26"
-END_DATE   = "2026-09-26"
+START_DATE = "2026-09-01"
+END_DATE   = "2026-09-30"
 GROUP_SIZE = 1
 
 RUN_LOOP              = True
@@ -151,7 +151,9 @@ def find_available_slots(permit_id):
 
     availability = data.get("payload", {}).get("availability", {})
     for date_key, date_info in availability.items():
-        date_key[:10]
+        date_str = date_key[:10]
+        if date_str != "2026-09-26":
+            continue
         for div_id_str, slot in date_info.get("date_availability", {}).items():
             remaining = slot.get("remaining", 0)
             div_name  = div_names.get(div_id_str, f"Entry {div_id_str}")
