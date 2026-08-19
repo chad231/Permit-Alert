@@ -76,7 +76,7 @@ NOTIFY_EMAIL   = os.getenv("NOTIFY_EMAIL",   "")   # where alerts go
 # ──────────────────────────────────────────────────────────────
 #  SMS  (Twilio free trial — twilio.com/try-twilio)
 # ──────────────────────────────────────────────────────────────
-SMS_ENABLED        = False
+SMS_ENABLED        = True
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN",  "")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")  # your Twilio number
@@ -100,22 +100,48 @@ HEADERS = {
     "Accept":     "application/json",
 }
 
+# Cache division name lookups so we don't fetch metadata on every check
+_division_names: dict[str, dict[str, str]] = {}
 
-def get_monthly_availability(permit_id: int, year: int, month: int) -> dict:
-    """Fetch one month of availability from the Recreation.gov permits API."""
+
+def get_division_names(permit_id: int) -> dict[str, str]:
+    """
+    Fetch division (entry point) metadata for a permit and return
+    a dict mapping division_id string → human-readable name.
+    Uses the /api/permitcontent/ endpoint.
+    """
+    key = str(permit_id)
+    if key in _division_names:
+        return _division_names[key]
+    url = f"https://www.recreation.gov/api/permitcontent/{permit_id}"
+    try:
+        resp = requests.get(url, headers=HEADERS, timeout=20)
+        resp.raise_for_status()
+        data = resp.json()
+        divisions = data.get("payload", {}).get("divisions", {})
+        mapping = {
+            div_id: div_info.get("name", f"Entry point {div_id}")
+            for div_id, div_info in divisions.items()
+        }
+        _division_names[key] = mapping
+        return mapping
+    except Exception as exc:
+        print(f"  [warn] Could not fetch division names for {permit_id}: {exc}")
+        return {}
+
+
+def get_availability(permit_id: int, start: str, end: str) -> dict:
+    """
+    Fetch permit availability using the Inyo-specific API endpoint.
+    start / end are YYYY-MM-DD strings.
+    """
     url = (
-        f"https://www.recreation.gov/api/permits/{permit_id}"
-        f"/availability/month"
-        f"?start_date={year}-{month:02d}-01"
-        f"&commercial_acct=false"
+        f"https://www.recreation.gov/api/permitinyo/{permit_id}/availabilityv2"
+        f"?start_date={start}&end_date={end}&commercial_acct=false"
     )
     resp = requests.get(url, headers=HEADERS, timeout=20)
     resp.raise_for_status()
     return resp.json()
-
-
-def _next_month(dt: datetime) -> datetime:
-    return (dt.replace(day=28) + timedelta(days=4)).replace(day=1)
 
 
 def _name_matches(division_name: str) -> bool:
@@ -128,51 +154,47 @@ def _name_matches(division_name: str) -> bool:
 
 def find_available_slots(permit_id: int) -> list[dict]:
     """
-    Scan every month in the configured date window and return
+    Check availability for the configured date range and return
     a list of available date/entry-point combos that haven't been alerted yet.
     """
-    start  = datetime.strptime(START_DATE, "%Y-%m-%d")
-    end    = datetime.strptime(END_DATE,   "%Y-%m-%d")
-    found  = []
-    cursor = start.replace(day=1)
+    div_names = get_division_names(permit_id)
+    found = []
 
-    while cursor <= end:
-        try:
-            data = get_monthly_availability(permit_id, cursor.year, cursor.month)
-        except requests.RequestException as exc:
-            print(f"  [warn] API error — permit {permit_id} {cursor:%Y-%m}: {exc}")
-            cursor = _next_month(cursor)
-            continue
+    try:
+        data = get_availability(permit_id, START_DATE, END_DATE)
+    except requests.RequestException as exc:
+        print(f"  [warn] API error — permit {permit_id}: {exc}")
+        return found
 
-        for date_str, date_info in data.get("availability", {}).items():
-            date = datetime.strptime(date_str, "%Y-%m-%d")
-            if date < start or date > end:
+    # Response structure:
+    # { "payload": { "availability": { "YYYY-MM-DDT00:00:00Z": { "date_availability": { "div_id": { "remaining": N, ... } } } } } }
+    availability = data.get("payload", {}).get("availability", {})
+
+    for date_key, date_info in availability.items():
+        # date_key is like "2026-09-26T00:00:00Z" — extract just the date part
+        date_str = date_key[:10]
+
+        for div_id_str, slot in date_info.get("date_availability", {}).items():
+            remaining = slot.get("remaining", 0)
+            div_name  = div_names.get(div_id_str, f"Entry point {div_id_str}")
+
+            if not _name_matches(div_name):
+                continue
+            if remaining < GROUP_SIZE:
                 continue
 
-            for div_id_str, quota in date_info.get("date_quota", {}).items():
-                div_id    = int(div_id_str)
-                div_name  = quota.get("name", f"Entry point {div_id}")
-                remaining = quota.get("remaining", 0)
+            key = (permit_id, div_id_str, date_str)
+            if key in _alerted:
+                continue
 
-                if not _name_matches(div_name):
-                    continue
-                if remaining < GROUP_SIZE:
-                    continue
-
-                key = (permit_id, div_id, date_str)
-                if key in _alerted:
-                    continue  # already notified this run
-
-                found.append({
-                    "permit_id":    permit_id,
-                    "division_id":  div_id,
-                    "division_name": div_name,
-                    "date":         date_str,
-                    "remaining":    remaining,
-                    "booking_url":  f"https://www.recreation.gov/permits/{permit_id}",
-                })
-
-        cursor = _next_month(cursor)
+            found.append({
+                "permit_id":     permit_id,
+                "division_id":   div_id_str,
+                "division_name": div_name,
+                "date":          date_str,
+                "remaining":     remaining,
+                "booking_url":   f"https://www.recreation.gov/permits/{permit_id}",
+            })
 
     return found
 
