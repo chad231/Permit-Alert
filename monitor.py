@@ -100,7 +100,7 @@ def get_division_names(permit_id):
 def get_availability(permit_id, start, end):
     url = (
         f"https://www.recreation.gov/api/permitinyo/{permit_id}/availabilityv2"
-        f"?start_date={start}&end_date={end}&commercial_acct=false"
+        f"?start_date={start}T00%3A00%3A00.000Z&end_date={end}T00%3A00%3A00.000Z&commercial_acct=false"
     )
     resp = requests.get(url, headers=HEADERS, timeout=20)
     resp.raise_for_status()
