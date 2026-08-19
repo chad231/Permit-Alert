@@ -119,8 +119,13 @@ def find_available_slots(permit_id):
     found = []
     try:
         data = get_availability(permit_id, START_DATE, END_DATE)
-    except requests.RequestException as exc:
-        print(f"  [warn] API error — permit {permit_id}: {exc}")
+     except requests.RequestException as exc:
+        body = ""
+        try:
+            body = exc.response.text[:500]
+        except Exception:
+            pass
+        print(f"  [warn] API error — permit {permit_id}: {exc} | Response: {body}")
         return found
 
     availability = data.get("payload", {}).get("availability", {})
