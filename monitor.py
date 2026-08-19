@@ -76,7 +76,7 @@ NOTIFY_EMAIL   = os.getenv("NOTIFY_EMAIL",   "")   # where alerts go
 # ──────────────────────────────────────────────────────────────
 #  SMS  (Twilio free trial — twilio.com/try-twilio)
 # ──────────────────────────────────────────────────────────────
-SMS_ENABLED        = True
+SMS_ENABLED        = False
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
 TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN",  "")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")  # your Twilio number
