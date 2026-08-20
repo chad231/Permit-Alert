@@ -35,7 +35,7 @@ END_DATE    = "2026-09-30"
 TARGET_DATE = "2026-09-26"
 GROUP_SIZE  = 1
 
-RUN_LOOP              = True
+RUN_LOOP              = False
 POLL_INTERVAL_SECONDS = 60
 LOOP_DURATION_MINUTES = 85
 
@@ -248,7 +248,7 @@ def notify(slots):
 def run_check():
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"\n[{ts}] Checking...")
-    all_slots = []
+    all_slots = [{"permit_id": 233262, "division_id": "TEST", "division_name": "TEST Bishop Pass South Lake", "date": "2026-09-26", "remaining": 2, "booking_url": "https://www.recreation.gov/permits/233262"}]
     for permit_id in PERMIT_IDS:
         slots = find_available_slots(permit_id)
         all_slots.extend(slots)
