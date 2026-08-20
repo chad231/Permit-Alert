@@ -43,6 +43,7 @@ EMAIL_ENABLED  = True
 GMAIL_USER     = os.getenv("GMAIL_USER",     "")
 GMAIL_PASSWORD = os.getenv("GMAIL_PASSWORD", "")
 NOTIFY_EMAIL   = os.getenv("NOTIFY_EMAIL",   "")
+NTFY_TOPIC     = os.getenv("NTFY_TOPIC",     "")
 
 SMS_ENABLED        = False
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "")
@@ -234,6 +235,7 @@ def notify(slots):
     print(body)
     print("=" * 60 + "\n")
     send_email(subject, body)
+    requests.post("https://ntfy.sh/" + NTFY_TOPIC, data=body.encode("utf-8"), headers={"Title": subject, "Priority": "urgent", "Tags": "rotating_light"}, timeout=15) if NTFY_TOPIC else None
     send_sms(body)
     for s in slots:
         _alerted.add((s["permit_id"], s["division_id"], s["date"]))
