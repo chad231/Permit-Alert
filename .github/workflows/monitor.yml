@@ -2,13 +2,13 @@ name: Permit Availability Monitor
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/5,35 * * * *'
   workflow_dispatch:
 
 jobs:
   check-permits:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 90
 
     steps:
       - name: Check out repo
