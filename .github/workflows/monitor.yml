@@ -25,6 +25,7 @@ jobs:
       - name: Run permit monitor
         env:
           GMAIL_USER:         ${{ secrets.GMAIL_USER }}
+          NTFY_TOPIC:         ${{ secrets.NTFY_TOPIC }}
           GMAIL_PASSWORD:     ${{ secrets.GMAIL_PASSWORD }}
           NOTIFY_EMAIL:       ${{ secrets.NOTIFY_EMAIL }}
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
