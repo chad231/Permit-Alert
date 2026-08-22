@@ -34,7 +34,7 @@ ALERT_ON_UNLISTED = True   # catches Big Pine Creek North Fork when it opens
 
 START_DATE  = "2026-09-01"
 END_DATE    = "2026-09-30"
-TARGET_DATE = "2026-09-26"
+TARGET_DATE = "2026-09-15"
 GROUP_SIZE  = 1
 
 RUN_LOOP              = True
