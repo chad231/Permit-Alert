@@ -155,6 +155,7 @@ def find_available_slots(permit_id):
         return found
 
     availability = data.get("payload", {}).get("availability", {})
+    print("  [rawdump] hidden ids by date:", {d[:10]: [i for i in v.get("date_availability", {}) if i not in div_names] for d, v in data.get("payload", {}).get("availability", {}).items()})
     for date_key, date_info in availability.items():
         date_str = date_key[:10]
         if date_str != TARGET_DATE:
