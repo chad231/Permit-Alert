@@ -154,15 +154,14 @@ def find_available_slots(permit_id):
         print(f"  [warn] Availability fetch failed: {exc}")
         return found
 
-    availability = data.get("payload", {}).get("availability", {})
-    print("  [rawdump] hidden ids by date:", {d[:10]: [i for i in v.get("date_availability", {}) if i not in div_names] for d, v in data.get("payload", {}).get("availability", {}).items()})
-    print("  [rawdump2] RAW RESPONSE:", str(data)[:1500])
+    availability = data.get("payload", {})
+    print("  [nf] unnamed on target:", {i: (s.get("quota_usage_by_member_daily", {}).get("remaining"), s.get("quota_usage_by_member_daily", {}).get("total")) for d, v in data.get("payload", {}).items() if d[:10]==TARGET_DATE for i, s in v.items() if i not in div_names}))
     for date_key, date_info in availability.items():
         date_str = date_key[:10]
         if date_str != TARGET_DATE:
             continue
-        for div_id_str, slot in date_info.get("date_availability", {}).items():
-            remaining = slot.get("remaining", 0)
+        for div_id_str, slot in date_info.items():
+            remaining = slot.get("quota_usage_by_member_daily", {}).get("remaining", 0)
             div_name  = div_names.get(div_id_str, f"Entry {div_id_str}")
             if not name_matches(div_name):
                 continue
