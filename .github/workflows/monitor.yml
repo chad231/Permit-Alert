@@ -32,4 +32,4 @@ jobs:
           TWILIO_AUTH_TOKEN:  ${{ secrets.TWILIO_AUTH_TOKEN }}
           TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
           TWILIO_TO_NUMBER:   ${{ secrets.TWILIO_TO_NUMBER }}
-        run: python monitor.py
+        run: python -u monitor.py
