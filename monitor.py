@@ -155,7 +155,7 @@ def find_available_slots(permit_id):
         return found
 
     availability = data.get("payload", {})
-        print("  [nf2] unnamed ids anywhere in month:", sorted({i for d, v in data.get("payload", {}).items() for i in v if i not in div_names})
+        print("  [nf2] unnamed ids anywhere in month:", sorted({i for d, v in data.get("payload", {}).items() for i in v if i not in div_names}))
         date_str = date_key[:10]
         if date_str != TARGET_DATE:
             continue
