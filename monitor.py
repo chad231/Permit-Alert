@@ -2,7 +2,7 @@
 """
 Recreation.gov Inyo Wilderness Permit Monitor
 Polls the Recreation.gov public API for overnight permit availability
-and sends email (Gmail) and/or SMS (Twilio) alerts when spots open up.
+and sends email (Gmail) + phone push (ntfy) alerts when spots open up.
 
 This script only checks and notifies -- it does NOT book anything.
 """
@@ -22,15 +22,16 @@ from email.mime.multipart import MIMEMultipart
 
 PERMIT_IDS = [233262]
 
+# These three resolve by name in Recreation.gov's availability feed.
+# Big Pine Creek North Fork is NOT in that name feed, so it is caught by the
+# "unlisted trailhead" rule below (it shows up as an unnamed entry when a spot opens).
 ENTRY_POINT_NAMES = [
-    "big pine creek north fork",
     "bishop pass",
     "sabrina",
     "little lakes valley",
 ]
+ALERT_ON_UNLISTED = True   # catches Big Pine Creek North Fork when it opens
 
-# The permitinyo API requires the FULL month as the range
-# (first day to last day). We then filter for TARGET_DATE below.
 START_DATE  = "2026-09-01"
 END_DATE    = "2026-09-30"
 TARGET_DATE = "2026-09-26"
@@ -44,6 +45,7 @@ EMAIL_ENABLED  = True
 GMAIL_USER     = os.getenv("GMAIL_USER",     "")
 GMAIL_PASSWORD = os.getenv("GMAIL_PASSWORD", "")
 NOTIFY_EMAIL   = os.getenv("NOTIFY_EMAIL",   "")
+
 NTFY_TOPIC     = os.getenv("NTFY_TOPIC",     "")
 
 SMS_ENABLED        = False
@@ -52,10 +54,6 @@ TWILIO_AUTH_TOKEN  = os.getenv("TWILIO_AUTH_TOKEN",  "")
 TWILIO_FROM_NUMBER = os.getenv("TWILIO_FROM_NUMBER", "")
 TWILIO_TO_NUMBER   = os.getenv("TWILIO_TO_NUMBER",   "")
 
-
-# ----------------------------------------------------------
-#  SESSION  -- establishes cookies recreation.gov expects
-# ----------------------------------------------------------
 
 SESSION = requests.Session()
 SESSION.headers.update({
@@ -73,7 +71,6 @@ SESSION.headers.update({
 _session_initialized = False
 
 def init_session():
-    """Visit the permit page once to pick up any session cookies."""
     global _session_initialized
     if _session_initialized:
         return
@@ -86,17 +83,9 @@ def init_session():
         _session_initialized = True
 
 
-# ----------------------------------------------------------
-#  INTERNAL STATE
-# ----------------------------------------------------------
-
 _alerted   = set()
 _div_names = {}
 
-
-# ----------------------------------------------------------
-#  API HELPERS
-# ----------------------------------------------------------
 
 def get_division_names(permit_id):
     key = str(permit_id)
@@ -116,12 +105,7 @@ def get_division_names(permit_id):
         print(f"  [info] Entry points: {list(mapping.values())}")
         return mapping
     except Exception as exc:
-        body = ""
-        try:
-            body = exc.response.text[:300]
-        except Exception:
-            pass
-        print(f"  [warn] Division names error: {exc} | body: {body}")
+        print(f"  [warn] Division names error: {exc}")
         return {}
 
 
@@ -155,15 +139,15 @@ def find_available_slots(permit_id):
         return found
 
     availability = data.get("payload", {})
-    print("  [nf2] unnamed ids anywhere in month:", sorted({i for d, v in data.get("payload", {}).items() for i in v if i not in div_names}))
     for date_key, date_info in availability.items():
         date_str = date_key[:10]
         if date_str != TARGET_DATE:
             continue
         for div_id_str, slot in date_info.items():
             remaining = slot.get("quota_usage_by_member_daily", {}).get("remaining", 0)
-            div_name  = div_names.get(div_id_str, f"Entry {div_id_str}")
-            if not name_matches(div_name):
+            is_unlisted = div_id_str not in div_names
+            div_name = div_names.get(div_id_str, f"UNLISTED trailhead (likely Big Pine North Fork) id {div_id_str}")
+            if not (is_unlisted and ALERT_ON_UNLISTED) and not name_matches(div_name):
                 continue
             if remaining < GROUP_SIZE:
                 continue
@@ -181,19 +165,15 @@ def find_available_slots(permit_id):
     return found
 
 
-# ----------------------------------------------------------
-#  NOTIFICATIONS
-# ----------------------------------------------------------
-
 def build_message(slots):
     lines = [
         f"- {s['date']}  |  {s['division_name']}  |  {s['remaining']} spot(s)\n"
         f"  Book: {s['booking_url']}"
         for s in slots
     ]
-    first   = slots[0]
+    first = slots[0]
     subject = f"Permit open: {first['date']} -- {first['division_name']}"
-    body    = "Inyo Wilderness permit(s) just became available!\n\n" + "\n\n".join(lines) + "\n\nMove fast!"
+    body = "Inyo Wilderness permit(s) just became available!\n\n" + "\n\n".join(lines) + "\n\nMove fast!"
     return subject, body
 
 
@@ -203,8 +183,8 @@ def send_email(subject, body):
         return
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"]    = GMAIL_USER
-    msg["To"]      = NOTIFY_EMAIL
+    msg["From"] = GMAIL_USER
+    msg["To"] = NOTIFY_EMAIL
     msg.attach(MIMEText(body, "plain"))
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
@@ -231,29 +211,39 @@ def send_sms(body):
         print(f"  [!] SMS failed: {exc}")
 
 
+def send_push(subject, body):
+    if not NTFY_TOPIC:
+        return
+    try:
+        requests.post(
+            f"https://ntfy.sh/{NTFY_TOPIC}",
+            data=body.encode("utf-8"),
+            headers={"Title": subject, "Priority": "urgent", "Tags": "rotating_light"},
+            timeout=15,
+        )
+        print("  [ok] Push sent.")
+    except Exception as exc:
+        print(f"  [!] Push failed: {exc}")
+
+
 def notify(slots):
     subject, body = build_message(slots)
     print("\n" + "=" * 60)
     print(body)
     print("=" * 60 + "\n")
     send_email(subject, body)
-    requests.post("https://ntfy.sh/" + NTFY_TOPIC, data=body.encode("utf-8"), headers={"Title": subject, "Priority": "urgent", "Tags": "rotating_light"}, timeout=15) if NTFY_TOPIC else None
+    send_push(subject, body)
     send_sms(body)
     for s in slots:
         _alerted.add((s["permit_id"], s["division_id"], s["date"]))
 
-
-# ----------------------------------------------------------
-#  MAIN
-# ----------------------------------------------------------
 
 def run_check():
     ts = datetime.now().strftime("%H:%M:%S")
     print(f"\n[{ts}] Checking...")
     all_slots = []
     for permit_id in PERMIT_IDS:
-        slots = find_available_slots(permit_id)
-        all_slots.extend(slots)
+        all_slots.extend(find_available_slots(permit_id))
     if all_slots:
         print(f"  {len(all_slots)} slot(s) found!")
         notify(all_slots)
@@ -266,7 +256,7 @@ def main():
     print(
         f"Inyo Permit Monitor\n"
         f"  Permit(s)  : {PERMIT_IDS}\n"
-        f"  Trailheads : {targets}\n"
+        f"  Trailheads : {targets} (+ unlisted North Fork)\n"
         f"  Target date: {TARGET_DATE}\n"
         f"  Group size : >= {GROUP_SIZE}\n"
         f"  Mode       : {'loop every %ds for %.1f min' % (POLL_INTERVAL_SECONDS, LOOP_DURATION_MINUTES) if RUN_LOOP else 'single check'}\n"
@@ -286,7 +276,7 @@ def main():
             break
         time.sleep(min(POLL_INTERVAL_SECONDS, remaining))
 
-    print("\nLoop complete -- GitHub Actions will re-run in ~5 min.")
+    print("\nLoop complete.")
 
 
 if __name__ == "__main__":
