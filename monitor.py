@@ -23,7 +23,7 @@ from email.mime.multipart import MIMEMultipart
 PERMIT_IDS = [233262]
 
 ENTRY_POINT_NAMES = [
-    "big pine",
+    "big pine creek north fork",
     "bishop pass",
     "sabrina",
 ]
