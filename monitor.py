@@ -26,6 +26,7 @@ ENTRY_POINT_NAMES = [
     "big pine creek north fork",
     "bishop pass",
     "sabrina",
+    "little lakes valley",
 ]
 
 # The permitinyo API requires the FULL month as the range
